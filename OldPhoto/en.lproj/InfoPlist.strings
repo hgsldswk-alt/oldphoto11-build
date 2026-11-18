@@ -1,0 +1,4 @@
+"CFBundleDisplayName" = "Photo Scan";
+"NSCameraUsageDescription" = "Scan printed photographs and read writing on their backs.";
+"NSMotionUsageDescription" = "Use the angle of your iPhone to guide glare-reduction retakes.";
+"NSPhotoLibraryAddUsageDescription" = "Save scans to Photos.";

@@ -1,0 +1,4 @@
+"CFBundleDisplayName" = "老照片扫描";
+"NSCameraUsageDescription" = "翻拍纸质照片并识别照片背面的文字。";
+"NSMotionUsageDescription" = "补拍去反光时，读取手机倾斜角度来引导拍摄。";
+"NSPhotoLibraryAddUsageDescription" = "把翻拍结果保存到系统照片。";

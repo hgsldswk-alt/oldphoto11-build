@@ -1,0 +1,105 @@
+name: OldPhoto
+options:
+  deploymentTarget:
+    iOS: "17.0"
+  developmentLanguage: en
+  knownRegions: [en, zh-Hans, zh-Hant]
+settings:
+  base:
+    APP_ID: com.hgsldswk.oldphoto
+    APP_STORE_ID: "6836318082"
+    # 模型按 URL 用 MLModel(contentsOf:) 加载，不要 Xcode 自动生成的类（生成名 model 与 MLModel 冲突导致编译失败，2026-11-19）
+    COREML_CODEGEN_LANGUAGE: None
+    MARKETING_VERSION: "1.1"
+    CURRENT_PROJECT_VERSION: "1"
+    CODE_SIGN_STYLE: Automatic
+    SWIFT_VERSION: "5.0"
+    TARGETED_DEVICE_FAMILY: "1"
+targets:
+  OldPhoto:
+    type: application
+    platform: iOS
+    sources:
+      - path: OldPhoto
+        excludes: ["Models/README.md"]
+    preBuildScripts:
+      - name: Guard release model contents
+        script: |
+          if [ "$CONFIGURATION" = Release ]; then
+            models="$SRCROOT/OldPhoto/Models"
+            if [ -d "$models/DDColorFixture.mlpackage" ]; then
+              echo 'error: Remove the test-only DDColor fixture before archiving.'
+              exit 1
+            fi
+            if [ ! -d "$models/DDColor.mlpackage" ] || [ ! -s "$models/LICENSE.txt" ] || [ ! -s "$models/NOTICE.txt" ]; then
+              echo 'error: Install the validated DDColor package, LICENSE.txt and NOTICE.txt before archiving.'
+              exit 1
+            fi
+          fi
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: $(APP_ID)
+        TARGETED_DEVICE_FAMILY: "1"
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        MTL_COMPILER_FLAGS: "$(inherited) -fcikernel"
+        MTLLINKER_FLAGS: "$(inherited) -cikernel"
+      configs:
+        Release:
+          CODE_SIGN_STYLE: Manual
+          CODE_SIGN_IDENTITY: Apple Distribution
+          PROVISIONING_PROFILE_SPECIFIER: OldPhoto AppStore
+    info:
+      path: OldPhoto/Info.plist
+      properties:
+        CFBundleDisplayName: Photo Scan
+        CFBundleDevelopmentRegion: en
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        APP_STORE_ID: $(APP_STORE_ID)
+        UILaunchScreen: {}
+        UIRequiresFullScreen: true
+        UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
+        NSCameraUsageDescription: Scan printed photographs and read writing on their backs.
+        NSMotionUsageDescription: Use the angle of your iPhone to guide glare-reduction retakes.
+        NSPhotoLibraryAddUsageDescription: Save scans to Photos.
+        ITSAppUsesNonExemptEncryption: false
+  OldPhotoTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources: [OldPhotoTests]
+    dependencies:
+      - target: OldPhoto
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: $(APP_ID).tests
+        GENERATE_INFOPLIST_FILE: YES
+  OldPhotoUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources: [OldPhotoUITests]
+    dependencies:
+      - target: OldPhoto
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: $(APP_ID).uitests
+        GENERATE_INFOPLIST_FILE: YES
+        TEST_TARGET_NAME: OldPhoto
+schemes:
+  OldPhoto:
+    build:
+      targets:
+        OldPhoto: all
+        OldPhotoTests: [test]
+    test:
+      config: Debug
+      targets: [OldPhotoTests]
+      commandLineArguments:
+        "-camera-denied": true
+  OldPhotoUI:
+    build:
+      targets:
+        OldPhoto: all
+        OldPhotoUITests: [test]
+    test:
+      config: Debug
+      targets: [OldPhotoUITests]
