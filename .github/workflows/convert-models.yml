@@ -1,0 +1,81 @@
+name: Convert and verify OldPhoto models
+
+on:
+  workflow_dispatch:
+    inputs:
+      convert_real_model:
+        description: Convert and test the verified DDColor weights
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+jobs:
+  convert:
+    runs-on: macos-15
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'  # 3.11.11 在 macos-15 arm64 上没有预编译包（2026-11-18 云端报错）
+      - name: Locate app workspace and install tools
+        run: |
+          app_root=.
+          if [[ -f build/v1.1/ci/convert_ddcolor.py ]]; then app_root=build/v1.1; fi
+          echo "APP_ROOT=$app_root" >> "$GITHUB_ENV"
+          python -m pip install torch==2.5.1 torchvision==0.20.1 coremltools==8.3.0 numpy==1.26.4 opencv-python==4.10.0.84
+          brew install xcodegen
+          xcodebuild -version
+          xcrun simctl list runtimes
+      - name: Generate CPU-tested 16-pixel UI fixture
+        working-directory: ${{ env.APP_ROOT }}
+        run: |
+          python ci/convert_ddcolor.py --fixture --output "$RUNNER_TEMP/ddcolor-fixture"
+          mkdir -p OldPhoto/Models
+          cp -R "$RUNNER_TEMP/ddcolor-fixture/DDColorFixture.mlpackage" OldPhoto/Models/
+      - name: Convert real weights and stage the validated bundle candidate
+        if: inputs.convert_real_model
+        working-directory: ${{ env.APP_ROOT }}
+        run: |
+          python ci/convert_ddcolor.py --output "$RUNNER_TEMP/ddcolor"
+          cp -R "$RUNNER_TEMP/ddcolor/DDColor.mlpackage" OldPhoto/Models/
+          cp "$RUNNER_TEMP/ddcolor/"{LICENSE.txt,NOTICE.txt,conversion-report.json} OldPhoto/Models/
+      - uses: actions/upload-artifact@v4
+        if: inputs.convert_real_model && success()
+        with:
+          name: DDColor-converted-candidate
+          path: ${{ runner.temp }}/ddcolor/
+          if-no-files-found: error
+      - name: Run app and simulator tests
+        working-directory: ${{ env.APP_ROOT }}
+        env:
+          REAL_COLOR_MODEL: ${{ inputs.convert_real_model }}
+        run: |
+          xcodegen generate
+          device=$(xcrun simctl list devices available -j | python -c 'import json,sys; data=json.load(sys.stdin)["devices"]; print(next(d["udid"] for runtime in sorted(data,reverse=True) if "iOS" in runtime for d in data[runtime] if d["name"].startswith("iPhone")))')
+          xcodebuild -scheme OldPhoto -showdestinations
+          xcrun simctl boot "$device" || true
+          xcrun simctl bootstatus "$device" -b
+          export SIMCTL_CHILD_OLDPHOTO_REQUIRE_DDCOLOR_CPU="$REAL_COLOR_MODEL"
+          unit_status=0
+          xcodebuild test -scheme OldPhoto -destination "platform=iOS Simulator,id=$device" -parallel-testing-enabled NO \
+            -derivedDataPath "$RUNNER_TEMP/OldPhotoBuild" \
+            -resultBundlePath "$RUNNER_TEMP/OldPhotoTests.xcresult" CODE_SIGNING_ALLOWED=NO || unit_status=$?
+          fixture="$RUNNER_TEMP/OldPhotoBuild/Build/Products/Debug-iphonesimulator/OldPhoto.app/DDColorFixture.mlmodelc"
+          [[ -d "$fixture" ]]
+          if [[ "$REAL_COLOR_MODEL" == true ]]; then [[ -d "${fixture%/*}/DDColor.mlmodelc" ]]; fi
+          xcodebuild test -scheme OldPhotoUI -destination "platform=iOS Simulator,id=$device" -parallel-testing-enabled NO \
+            -derivedDataPath "$RUNNER_TEMP/OldPhotoBuild" \
+            -resultBundlePath "$RUNNER_TEMP/OldPhotoUITests.xcresult" CODE_SIGNING_ALLOWED=NO
+          exit "$unit_status"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: OldPhoto-verification
+          path: |
+            ${{ runner.temp }}/OldPhotoTests.xcresult
+            ${{ runner.temp }}/OldPhotoUITests.xcresult
+            ${{ runner.temp }}/ddcolor-fixture/fixture-report.json
+          if-no-files-found: warn
